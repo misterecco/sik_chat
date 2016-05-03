@@ -1,8 +1,3 @@
-/*
- Ten program używa poll(), aby równocześnie obsługiwać wielu klientów
- bez tworzenia procesów ani wątków.
-*/
-
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
@@ -15,23 +10,40 @@
 #define TRUE 1
 #define FALSE 0
 #define BUF_SIZE 1024
+#define DEFAULT_PORT 20160
+#define MAX_CLIENTS 21
 
 static int finish = FALSE;
 
-/* Obsługa sygnału kończenia */
+/* SIGINT handling */
 static void catch_int (int sig) {
     finish = TRUE;
-    fprintf(stderr,
-            "Signal %d catched. No new connections will be accepted.\n", sig);
+    fprintf(stderr, "Signal %d caught. No new connections will be accepted.\n", sig);
 }
 
-int main () {
-    struct pollfd client[_POSIX_OPEN_MAX];
+int main (int argc, char** argv) {
+    struct pollfd client[MAX_CLIENTS];
     struct sockaddr_in server;
     char buf[BUF_SIZE];
     size_t length;
     ssize_t rval;
     int msgsock, activeClients, i, ret;
+    int connection_port = DEFAULT_PORT;
+
+    /* Arguments validation */
+    if (argc > 2) {
+        printf("Usage: %s [port]\n", argv[0]);
+        exit(1);
+    }
+
+    if (argc == 2) {
+        connection_port = atoi(argv[1]);
+    }
+
+    if (connection_port > 65535) {
+        printf("Invalid number of port\n");
+        exit(1);
+    }
 
     /* Po Ctrl-C kończymy */
     if (signal(SIGINT, catch_int) == SIG_ERR) {
@@ -40,7 +52,7 @@ int main () {
     }
 
     /* Inicjujemy tablicę z gniazdkami klientów, client[0] to gniazdko centrali */
-    for (i = 0; i < _POSIX_OPEN_MAX; ++i) {
+    for (i = 0; i < MAX_CLIENTS; ++i) {
         client[i].fd = -1;
         client[i].events = POLLIN;
         client[i].revents = 0;

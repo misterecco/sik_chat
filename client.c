@@ -24,9 +24,10 @@ int main (int argc, char *argv[]) {
     struct addrinfo addr_hints, *addr_result;
     char line[BUFFER_SIZE];
 
-    /* Kontrola dokumentów ... */
-    if (argc != 3) {
-        fatal("Usage: %s host port", argv[0]);
+    /* Arguments validation */
+    if (argc > 3 || argc < 2) {
+        printf("Usage: %s host [port]\n", argv[0]);
+        exit(1);
     }
 
     sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
