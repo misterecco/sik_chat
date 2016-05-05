@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -O2 -DDEBUG
-TARGETS = client server
+TARGETS = client server generator
 
 all: $(TARGETS)
 
@@ -15,6 +15,8 @@ client: client.o err.o common.o
 server.o: server.c err.h common.h
 
 server: server.o err.o common.o
+
+generator: generator.c
 
 clean:
 	rm -f *.o $(TARGETS)
