@@ -1,18 +1,20 @@
 CC = gcc
-CFLAGS = -Wall -O2
+CFLAGS = -Wall -O2 -DDEBUG
 TARGETS = client server
 
 all: $(TARGETS)
 
 err.o: err.c err.h
 
-client.o: client.c err.h
+common.o: common.c common.h err.h
 
-client: client.o err.o
+client.o: client.c err.h common.h
 
-server.o: server.c err.h
+client: client.o err.o common.o
 
-server: server.o err.h
+server.o: server.c err.h common.h
+
+server: server.o err.o common.o
 
 clean:
 	rm -f *.o $(TARGETS)

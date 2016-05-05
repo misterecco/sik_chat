@@ -181,7 +181,7 @@ int main (int argc, char** argv) {
     listen_on_central_socket();
 
     do {
-        reset_revents();
+//        reset_revents();
         close_central_socket_if_necessary();
         do_poll();
     } while (finish == false || active_clients > 0);
