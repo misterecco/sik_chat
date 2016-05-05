@@ -1,4 +1,3 @@
-#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -7,7 +6,6 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "err.h"
 #include "common.h"
 
 #define MAX_CLIENTS 21
@@ -17,7 +15,7 @@ static int connection_port = DEFAULT_PORT;
 static int active_clients = 0;
 static struct pollfd client[MAX_CLIENTS];
 static struct sockaddr_in server;
-static int msgsock, ret;
+static int msgsock;
 
 #ifdef DEBUG
 static bool debug = true;
@@ -113,12 +111,22 @@ static void accept_new_client() {
     }
 }
 
-static void close_client_socket_if_necessary(int client_number) {
+static void close_client_socket(int client_number) {
     if (close(client[client_number].fd) < 0)
         perror("close");
     client[client_number].fd = -1;
     active_clients -= 1;
 };
+
+static void broadcast_message(int client_number, ssize_t size, message *msg) {
+    for (int i = 1; i < MAX_CLIENTS; i++) {
+        if (client[i].fd != -1 /* && i != client_number */) {
+            if (write(client[i].fd, msg, size) < 0) {
+                perror("writing on stream socket");
+            }
+        }
+    }
+}
 
 static void read_and_broadcast_messages_and_close_connections() {
     message msg;
@@ -127,25 +135,31 @@ static void read_and_broadcast_messages_and_close_connections() {
             ssize_t rval = read(client[i].fd, &msg, sizeof(message));
             if (rval < 0) {
                 perror("Reading stream message");
-                close_client_socket_if_necessary(i);
+                close_client_socket(i);
             }
             else if (rval == 0) {
                 if (debug) fprintf(stderr, "Ending connection\n");
-                close_client_socket_if_necessary(i);
+                close_client_socket(i);
             }
             else {
-                //TODO: validate and broadcast instead of printing
-                int l = ntohs(msg.len);
-                printf("Msg: %d, %d, %*.*s\n", (int)rval, l, l, l, msg.data);
-                // This might be useful later
-                // fwrite(str, 1, len, stdout);
+                size_t len = ntohs(msg.len);
+                if (!is_message_valid(&msg, rval)) {
+                    if (debug) perror("message invalid. closing connection\n");
+                    close_client_socket(i);
+                } else {
+                    if (debug) {
+                        fwrite(msg.data, 1, len, stderr);
+                        fwrite("\n", 1, 1, stderr);
+                    }
+                    broadcast_message(i, rval, &msg);
+                }
             }
         }
     }
 }
 
 static void do_poll() {
-    ret = poll(client, MAX_CLIENTS, POLL_REFRESH_TIME);
+    int ret = poll(client, MAX_CLIENTS, POLL_REFRESH_TIME);
     if (ret < 0) {
         perror("poll");
     }

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <limits.h>
+#include <netinet/in.h>
 
 void set_sigint_behaviour(void(*handler)(int)) {
     struct sigaction setup_action;
@@ -32,4 +33,8 @@ void validate_arguments_and_set_connection_port(
         printf("Usage: %s %s\n", argv[0], param_info);
         exit(EXIT_FAILURE);
     }
+}
+
+bool is_message_valid(message *msg, ssize_t len) {
+    return sizeof(msg->len) + ntohs(msg->len) == len;
 }
