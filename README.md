@@ -1,8 +1,12 @@
-Simple client-server chat for university classes
-Author: Tomasz Kępa <tk359746@students.mimuw.edu.pl>
-Assignment:
-Termin oddania: poniedziałek 9 maja 2016, godzina 19.00
-                (liczy się czas na serwerze SVN)
+    Simple client-server chat for university classes
+
+    Author: Tomasz Kępa <tk359746@students.mimuw.edu.pl>
+
+Zadanie 1
+=========
+
+**Termin oddania: poniedziałek 9 maja 2016, godzina 19.00
+                (liczy się czas na serwerze SVN)**
 
 Należy przygotować parę programów - klient i serwer - służącą do komunikacji
 tekstowej pomiędzy użytkownikami (czat). Klient powinien wczytywać tekst z
@@ -12,11 +16,12 @@ Serwer powinien odbierać poszczególne wiadomości od klientów i rozsyłać ka
 do wszystkich podłączonych klientów z wyjątkiem nadawcy wiadomości.
 
 
-== Wywołanie programu ==
+Wywołanie programu
+------------------
 
 Serwer uruchamiamy poleceniem:
 
-./server [port]
+    ./server [port]
 
 Parametr:
 
@@ -26,17 +31,18 @@ port - opcjonalny numer portu, na którym serwer ma odbierać połączenia od
 
 Klienta uruchamiamy poleceniem:
 
-./client host [port]
+    ./client host [port]
 
 Parametry:
 
-host - nazwa serwera, z którym należy się połączyć;
-port - opcjonalny numer portu serwera, z którym należy się połączyć (liczba
+    host - nazwa serwera, z którym należy się połączyć;
+    port - opcjonalny numer portu serwera, z którym należy się połączyć (liczba
        dziesiętna); jeśli nie podano argumentu, jako numer portu powinna być
        przyjęta liczba 20160.
 
 
-== Protokół ==
+Protokół
+--------
 
 Komunikacja pomiędzy klientem i serwerem odbywa się po TCP. Klient po
 uruchomieniu powinien nawiązać połączenie z serwerem, które powinno trwać aż do
@@ -53,7 +59,8 @@ linia wejścia wprowadzonego przez użytkownika, bez końcowego znaku 0 oraz bez
 końcowego znaku przejścia do nowej linii.
 
 
-== Wymagania szczegółowe ==
+Wymagania szczegółowe
+---------------------
 
 Programy powinny być odporne na podanie niepoprawnych parametrów lub złej liczby
 parametrów. W takim przypadku należy wypisać stosowny komunikat o błędzie i
@@ -94,16 +101,17 @@ przestrzegać podanej specyfikacji (nazwy plików, protokół komunikacji,
 komunikaty na standardowym wyjściu, kody powrotu).
 
 
-== Oddawanie rozwiązania ==
+Oddawanie rozwiązania
+---------------------
 
 Jako rozwiązanie należy dostarczyć pliki źródłowe oraz plik makefile,
 które należy umieścić w repozytorium SVN
 
-https://svn.mimuw.edu.pl/repos/SIK/
+    https://svn.mimuw.edu.pl/repos/SIK/
 
 w katalogu
 
-students/ab123456/zadanie1/
+    students/ab123456/zadanie1/
 
 gdzie ab123456 to standardowy login osoby oddającej rozwiązanie, używany
 na maszynach wydziału, wg schematu: inicjały, nr indeksu.
@@ -112,7 +120,8 @@ W wyniku wykonania polecenia make powinny powstać pliki wykonywalne o nazwach
 'client' i 'server'.
 
 
-== Ocena ==
+Ocena
+-----
 
 Ocena zadania będzie składała się z trzech składników:
 - ocena wzrokowa działania programu (20%);
