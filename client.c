@@ -1,9 +1,3 @@
-/*
- Program uruchamiamy z dwoma parametrami: nazwa serwera i numer jego portu.
- Program spróbuje połączyć się z serwerem, po czym będzie od nas pobierał
- linie tekstu i wysyłał je do serwera.  Wpisanie BYE kończy pracę.
-*/
-
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -13,52 +7,63 @@
 #include <string.h>
 #include <unistd.h>
 #include "err.h"
-
-#define BUFFER_SIZE      1024
+#include "comm.h"
 
 static const char bye_string[] = "BYE";
+static int sock;
+static struct addrinfo addr_hints, *addr_result;
 
-int main (int argc, char *argv[]) {
-    int rc;
-    int sock;
-    struct addrinfo addr_hints, *addr_result;
-    char line[BUFFER_SIZE];
 
-    /* Arguments validation */
+static void validate_arguments(int argc, char **argv) {
     if (argc > 3 || argc < 2) {
         printf("Usage: %s host [port]\n", argv[0]);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
+}
 
+static void create_socket() {
     sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0) {
         syserr("socket");
     }
+}
 
-    /* Trzeba się dowiedzieć o adres internetowy serwera. */
+static void get_server_address(char **argv) {
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_flags = 0;
     addr_hints.ai_family = AF_INET;
     addr_hints.ai_socktype = SOCK_STREAM;
     addr_hints.ai_protocol = IPPROTO_TCP;
-    /* I tak wyzerowane, ale warto poznać pola. */
+
     addr_hints.ai_addrlen = 0;
     addr_hints.ai_addr = NULL;
     addr_hints.ai_canonname = NULL;
     addr_hints.ai_next = NULL;
-    rc =  getaddrinfo(argv[1], argv[2], &addr_hints, &addr_result);
+
+    int rc =  getaddrinfo(argv[1], argv[2], &addr_hints, &addr_result);
     if (rc != 0) {
         fprintf(stderr, "rc=%d\n", rc);
         syserr("getaddrinfo: %s", gai_strerror(rc));
     }
+}
 
+static void connect_to_server() {
     if (connect(sock, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
         syserr("connect");
     }
     freeaddrinfo(addr_result);
+}
+
+int main (int argc, char **argv) {
+    char line[BUF_SIZE];
+
+    validate_arguments(argc, argv);
+    create_socket();
+    get_server_address(argv);
+    connect_to_server();
 
     do {
-        printf("line:");
+        printf(">:");
         fgets(line, sizeof line, stdin);
         if (write(sock, line, strlen (line)) < 0)
             perror("writing on stream socket");
