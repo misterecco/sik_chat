@@ -6,19 +6,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include <limits.h>
 #include "err.h"
-#include "comm.h"
+#include "common.h"
 
-static const char bye_string[] = "BYE";
 static int sock;
 static struct addrinfo addr_hints, *addr_result;
+static bool finish = false;
+static int connection_port = DEFAULT_PORT;
 
-
-static void validate_arguments(int argc, char **argv) {
-    if (argc > 3 || argc < 2) {
-        printf("Usage: %s host [port]\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
+static void catch_int (int sig) {
+    finish = true;
+    fprintf(stderr, "Signal %d caught. No new messages will be received.\n", sig);
 }
 
 static void create_socket() {
@@ -35,11 +35,6 @@ static void get_server_address(char **argv) {
     addr_hints.ai_socktype = SOCK_STREAM;
     addr_hints.ai_protocol = IPPROTO_TCP;
 
-    addr_hints.ai_addrlen = 0;
-    addr_hints.ai_addr = NULL;
-    addr_hints.ai_canonname = NULL;
-    addr_hints.ai_next = NULL;
-
     int rc =  getaddrinfo(argv[1], argv[2], &addr_hints, &addr_result);
     if (rc != 0) {
         fprintf(stderr, "rc=%d\n", rc);
@@ -54,25 +49,37 @@ static void connect_to_server() {
     freeaddrinfo(addr_result);
 }
 
-int main (int argc, char **argv) {
+static void send_message() {
     char line[BUF_SIZE];
+    message msg;
+    printf(">:");
+    fgets(line, sizeof line, stdin);
+    //TODO: handle lines ending with LF CR etc
+    uint16_t line_len = strlen(line) - 1;
+    msg.len = htons(line_len);
+    strncpy(msg.data, line, line_len);
+    printf("Message length: %d\n", line_len);
+    printf("Message data: %s\n", msg.data);
+    if (write(sock, &msg, sizeof(uint16_t) + line_len) < 0) {
+        perror("writing on stream socket");
+    }
+}
 
-    validate_arguments(argc, argv);
+int main (int argc, char **argv) {
+
+    validate_arguments_and_set_connection_port(argc, argv, 3, &connection_port,
+                                               "hostname [port]");
+    set_sigint_behaviour(catch_int);
     create_socket();
     get_server_address(argv);
     connect_to_server();
 
     do {
-        printf(">:");
-        fgets(line, sizeof line, stdin);
-        if (write(sock, line, strlen (line)) < 0)
-            perror("writing on stream socket");
+        send_message();
     }
-    while (strncmp(line, bye_string, sizeof bye_string - 1));
+    while (!finish);
     if (close(sock) < 0)
         perror("closing stream socket");
 
     return 0;
 }
-
-/*EOF*/

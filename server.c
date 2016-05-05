@@ -8,9 +8,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include "err.h"
-#include "comm.h"
+#include "common.h"
 
-#define DEFAULT_PORT 20160
 #define MAX_CLIENTS 21
 
 static int finish = false;
@@ -28,35 +27,7 @@ static bool debug = false;
 
 static void catch_int (int sig) {
     finish = true;
-    fprintf(stderr,
-            "Signal %d caught. No new connections will be accepted.\n", sig);
-}
-
-static void validate_and_set_connection_port(int argc, char **argv) {
-    if (argc > 2) {
-        printf("Usage: %s [port]\n", argv[0]);
-        exit(1);
-    }
-    if (argc == 2) {
-        connection_port = atoi(argv[1]);
-    }
-    if (connection_port > USHRT_MAX || connection_port < 0) {
-        printf("Invalid number of port\n");
-        exit(EXIT_FAILURE);
-    }
-}
-
-static void set_sigint_behaviour(void(*handler)(int)) {
-    struct sigaction setup_action;
-    sigset_t block_mask;
-    sigfillset(&block_mask);
-    sigdelset(&block_mask, SIGSTOP | SIGTERM | SIGQUIT);
-    setup_action.sa_handler = handler;
-    setup_action.sa_mask = block_mask;
-    setup_action.sa_flags = 0;
-    if (sigaction(SIGINT, &setup_action, 0) == -1) {
-        syserr("sigaction");
-    }
+    fprintf(stderr, "Signal %d caught. No new connections will be accepted.\n", sig);
 }
 
 static void initialize_clients_array() {
@@ -162,15 +133,19 @@ static void read_and_broadcast_messages_and_close_connections() {
                 if (debug) fprintf(stderr, "Ending connection\n");
                 close_client_socket_if_necessary(i);
             }
-            else
+            else {
                 //TODO: validate and broadcast instead of printing
-                printf("Msg: %d, %d, %s\n", (int)rval, ntohs(msg.len), msg.data);
+                int l = ntohs(msg.len);
+                printf("Msg: %d, %d, %*.*s\n", (int)rval, l, l, l, msg.data);
+                // This might be useful later
+                // fwrite(str, 1, len, stdout);
+            }
         }
     }
 }
 
 static void do_poll() {
-    ret = poll(client, MAX_CLIENTS, 5000);
+    ret = poll(client, MAX_CLIENTS, POLL_REFRESH_TIME);
     if (ret < 0) {
         perror("poll");
     }
@@ -185,7 +160,8 @@ static void do_poll() {
 
 int main (int argc, char** argv) {
 
-    validate_and_set_connection_port(argc, argv);
+    validate_arguments_and_set_connection_port(argc, argv, 2,
+                                               &connection_port, "[port]");
     set_sigint_behaviour(catch_int);
     initialize_clients_array();
     create_central_socket();

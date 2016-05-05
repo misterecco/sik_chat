@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(sik_chat)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -O2 -DDEBUG")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -O2")
 
-set(SOURCE_FILES_COMMON err.c err.h comm.h)
+set(SOURCE_FILES_COMMON err.c err.h common.h common.c)
 
 set(SOURCE_FILES_CLIENT client.c)
 
