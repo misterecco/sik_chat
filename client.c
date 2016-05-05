@@ -15,8 +15,7 @@ static int sock;
 static struct addrinfo addr_hints, *addr_result;
 static bool finish = false;
 static int connection_port = DEFAULT_PORT;
-static struct pollfd streams[2]; /* 0 - stdin, 1 - sock */
-
+static struct pollfd streams[2];
 static void catch_int (int sig) {
     finish = true;
     fprintf(stderr, "Signal %d caught. No new messages will be received.\n", sig);
@@ -29,14 +28,15 @@ static void create_socket() {
     }
 }
 
-static void get_server_address(char **argv) {
+static void get_server_address(int argc, char **argv) {
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_flags = 0;
     addr_hints.ai_family = AF_INET;
     addr_hints.ai_socktype = SOCK_STREAM;
     addr_hints.ai_protocol = IPPROTO_TCP;
 
-    int rc =  getaddrinfo(argv[1], argv[2], &addr_hints, &addr_result);
+    int rc =  getaddrinfo(argv[1], argc == 3 ? argv[2] : "20160",
+                          &addr_hints, &addr_result);
     if (rc != 0) {
         fprintf(stderr, "rc=%d\n", rc);
         syserr("getaddrinfo: %s", gai_strerror(rc));
@@ -51,11 +51,11 @@ static void connect_to_server() {
 }
 
 static void initialize_streams() {
-    streams[0].fd = stdin;
+    streams[0].fd = 0; // stdin
     streams[1].fd = sock;
     for (int i = 0; i <= 1; i++) {
-        streams[0].events = POLLIN;
-        streams[0].revents = 0;
+        streams[i].events = POLLIN;
+        streams[i].revents = 0;
     }
 }
 
@@ -66,9 +66,7 @@ static void close_socket() {
 }
 
 static void receive_message() {
-    printf("trying to read form socket\n");
-    if (streams[1].revents & POLLIN) {
-        printf("I have something!\n");
+    if (streams[1].revents & (POLLIN | POLLERR)) {
         message msg;
         ssize_t rval = read(sock, &msg, sizeof(message));
         if (rval < 0) {
@@ -82,46 +80,40 @@ static void receive_message() {
         else {
             size_t len = ntohs(msg.len);
             if (!is_message_valid(&msg, rval)) {
-                printf("message from server invalid\n");
+                perror("message from server invalid\n");
                 close_socket();
                 exit(EXIT_WRONG_MESSAGE);
             } else {
-                fwrite(msg.data, 1, len, stderr);
-                fwrite("\n", 1, 1, stderr);
+                fwrite(msg.data, 1, len, stdout);
+                fwrite("\n", 1, 1, stdout);
             }
         }
     }
 }
 
 static void send_message() {
-//    if (streams[0].revents & POLLIN) {
+    if (streams[0].revents & POLLIN) {
         char line[BUF_SIZE];
         message msg;
         fgets(line, sizeof line, stdin);
-        //TODO: handle lines ending with LF CR etc
+        //TODO: validate input, handle edge cases
         uint16_t line_len = strlen(line) - 1;
         msg.len = htons(line_len);
         strncpy(msg.data, line, line_len);
-        printf("Message length: %d\n", line_len);
-        printf("Message data: %*.*s\n", line_len, line_len, msg.data);
         if (write(sock, &msg, sizeof(uint16_t) + line_len) < 0) {
             perror("writing on stream socket");
         }
-//    }
+    }
 }
 
 static void do_poll() {
-    fprintf(stderr, "Before poll\n");
     int ret = poll(streams, 2, POLL_REFRESH_TIME);
     if (ret < 0) {
         perror("poll");
     }
     else if (ret > 0) {
-        fprintf(stderr, "Poll got sth\n");
         receive_message();
-    }
-    else {
-        fprintf(stderr, "Do something else\n");
+        send_message();
     }
 }
 
@@ -137,14 +129,13 @@ int main (int argc, char **argv) {
                                                "hostname [port]");
     set_sigint_behaviour(catch_int);
     create_socket();
-    get_server_address(argv);
+    get_server_address(argc, argv);
     connect_to_server();
     initialize_streams();
 
     do {
 //        reset_revents();
-//        do_poll();
-        send_message();
+        do_poll();
     }
     while (!finish);
     close_socket();

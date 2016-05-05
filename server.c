@@ -120,7 +120,7 @@ static void close_client_socket(int client_number) {
 
 static void broadcast_message(int client_number, ssize_t size, message *msg) {
     for (int i = 1; i < MAX_CLIENTS; i++) {
-        if (client[i].fd != -1 /* && i != client_number */) {
+        if (client[i].fd != -1  && i != client_number) {
             if (write(client[i].fd, msg, size) < 0) {
                 perror("writing on stream socket");
             }
@@ -166,9 +166,6 @@ static void do_poll() {
     else if (ret > 0) {
         accept_new_client();
         read_and_broadcast_messages_and_close_connections();
-    }
-    else if (debug) {
-        fprintf(stderr, "Do something else\n");
     }
 }
 
