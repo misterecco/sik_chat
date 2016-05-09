@@ -15,7 +15,7 @@ typedef struct __attribute__((__packed__)) message {
 } message;
 
 typedef struct buffer_state {
-    bool has_length;
+    size_t length_read;
     int data_read;
     message msg;
 } buffer_state;

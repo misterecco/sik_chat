@@ -8,7 +8,6 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <poll.h>
-#include <sys/ioctl.h>
 #include "err.h"
 #include "common.h"
 
@@ -20,7 +19,7 @@ static struct pollfd streams[2];
 static buffer_state buffer;
 
 static void reset_buffer() {
-    buffer.has_length = false;
+    buffer.length_read = 0;
     buffer.data_read = 0;
 }
 
@@ -64,30 +63,37 @@ static void initialize_streams() {
 }
 
 static void close_socket() {
-    if (close(sock) < 0) {
+    if (sock > 0 && close(sock) < 0) {
         perror("closing stream socket");
     }
+    sock = -1;
 }
 
-//TODO: check error messages and communicates
 static void receive_message() {
     if (streams[1].revents & (POLLIN | POLLERR | POLLHUP)) {
         size_t len;
         ssize_t rval;
-        if (!buffer.has_length) {
-            rval = read(sock, &(buffer.msg.len), sizeof(uint16_t));
-            buffer.has_length = true;
+        if (buffer.length_read < 2) {
+            rval = read(sock,
+                        &(buffer.msg.len) + buffer.length_read,
+                        2 - buffer.length_read);
             if (rval == 0) {
-                fprintf(stderr, "Ending connection\n");
                 close_socket();
                 exit(EXIT_SUCCESS);
-            } else if (rval != sizeof(uint16_t)) {
+            } else if (rval > 0) {
+                buffer.length_read += rval;
+            } else {
                 perror("Reading stream message");
                 close_socket();
-                exit(EXIT_WRONG_MESSAGE);
+                exit(EXIT_FAILURE);
             }
         }
         len = ntohs(buffer.msg.len);
+        if (len > BUF_SIZE) {
+            fprintf(stderr, "Message from server invalid, closing\n");
+            close_socket();
+            exit(EXIT_WRONG_MESSAGE);
+        }
         rval = read(sock,
                     buffer.msg.data + buffer.data_read,
                     len - buffer.data_read);
@@ -101,11 +107,10 @@ static void receive_message() {
             return; // wait for the rest of the message
         }
         if (!is_message_valid(&(buffer.msg), len)) {
-            perror("message from server invalid\n");
+            fprintf(stderr, "Message from server invalid, closing\n");
             close_socket();
             exit(EXIT_WRONG_MESSAGE);
         } else {
-//          printf("%*.*s\n", (int)len, (int)len, msg.data);
             fwrite(buffer.msg.data, 1, len, stdout);
             fwrite("\n", 1, 1, stdout);
             fflush(stdout);
@@ -114,7 +119,6 @@ static void receive_message() {
     }
 }
 
-//TODO: delete commented out lines
 static void send_message() {
     if (streams[0].revents & (POLLIN | POLLHUP)) {
         char line[BUF_SIZE + 1];
@@ -157,14 +161,12 @@ static void reset_revents() {
 }
 
 int main (int argc, char **argv) {
-
     validate_arguments_and_set_connection_port(argc, argv, 3, &connection_port,
                                                "hostname [port]");
     create_socket();
     get_server_address(argc, argv);
     connect_to_server();
     initialize_streams();
-
     do {
         reset_revents();
         do_poll();

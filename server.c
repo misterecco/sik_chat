@@ -19,15 +19,9 @@ static struct sockaddr_in server;
 static int msgsock;
 static struct buffer_state buffers[MAX_CLIENTS];
 
-#ifdef DEBUG
-static bool debug = true;
-#else
-static bool debug = false;
-#endif
-
 static void reset_client_buffer(int client_number) {
     buffers[client_number].data_read = 0;
-    buffers[client_number].has_length = false;
+    buffers[client_number].length_read = 0;
 }
 
 static void initialize_clients_array() {
@@ -56,17 +50,6 @@ static void bind_port_to_socket() {
         perror("Binding stream socket");
         exit(EXIT_FAILURE);
     }
-}
-
-static void get_socket_info() {
-    size_t length;
-    length = sizeof(server);
-    if (getsockname (client[0].fd, (struct sockaddr*)&server,
-                     (socklen_t*)&length) < 0) {
-        perror("Getting socket name");
-        exit(EXIT_FAILURE);
-    }
-    printf("Socket port: %u\n", (unsigned)ntohs(server.sin_port));
 }
 
 static void listen_on_central_socket() {
@@ -115,8 +98,9 @@ static void accept_new_client() {
 }
 
 static void close_client_socket(int client_number) {
-    if (close(client[client_number].fd) < 0)
+    if (close(client[client_number].fd) < 0) {
         perror("close");
+    }
     client[client_number].fd = -1;
     active_clients -= 1;
     reset_client_buffer(client_number);
@@ -132,45 +116,47 @@ static void broadcast_message(int client_number, ssize_t size, message *msg) {
     }
 }
 
-//TODO: rename this function
-static void read_and_broadcast_messages_and_close_connections() {
+static void handle_client_messages() {
     size_t len;
     ssize_t rval;
     for (int i = 1; i < MAX_CLIENTS; ++i) {
         if (client[i].fd != -1 && (client[i].revents & (POLLIN | POLLERR))) {
-            if (!buffers[i].has_length) {
-                rval = read(client[i].fd, &(buffers[i].msg.len), sizeof(uint16_t));
-                buffers[i].has_length = true;
+            if (buffers[i].length_read < 2) {
+                rval = read(client[i].fd,
+                            &(buffers[i].msg.len) + buffers[i].length_read,
+                            2 - buffers[i].length_read);
                 if (rval == 0) {
-                    if (debug) fprintf(stderr, "Ending connection\n");
                     close_client_socket(i);
+                    continue;
+                } else if (rval > 0) {
+                    buffers[i].length_read += rval;
                 }
-                if (rval != sizeof(uint16_t)) {
+                if (rval < 0) {
                     perror("Reading stream message");
                     close_client_socket(i);
+                    continue;
                 }
             }
             len = ntohs(buffers[i].msg.len);
+            if (len > BUF_SIZE) {
+                close_client_socket(i);
+                continue;
+            }
             rval = read(client[i].fd,
                         buffers[i].msg.data + buffers[i].data_read,
                         len - buffers[i].data_read);
             if (rval < 0) {
                 perror("Reading stream message");
                 close_client_socket(i);
-                return;
+                continue;
             }
             buffers[i].data_read += rval;
             if (buffers[i].data_read < len) {
-                return; // wait for the rest of the message
+                continue; // wait for the rest of the message
             }
             if (!is_message_valid(&(buffers[i].msg), len)) {
-                if (debug) perror("message invalid. closing connection\n");
                 close_client_socket(i);
             } else {
-                if (debug) {
-                    fwrite(buffers[i].msg.data, 1, len, stderr);
-                    fwrite("\n", 1, 1, stderr);
-                }
                 broadcast_message(i, len + sizeof(uint16_t), &(buffers[i].msg));
                 reset_client_buffer(i);
             }
@@ -185,7 +171,7 @@ static void do_poll() {
     }
     else if (ret > 0) {
         accept_new_client();
-        read_and_broadcast_messages_and_close_connections();
+        handle_client_messages();
     }
 }
 
@@ -196,7 +182,6 @@ int main (int argc, char** argv) {
     initialize_clients_array();
     create_central_socket();
     bind_port_to_socket();
-    if (debug) get_socket_info();
     listen_on_central_socket();
 
     do {
