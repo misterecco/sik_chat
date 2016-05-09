@@ -17,6 +17,12 @@ static struct addrinfo addr_hints, *addr_result;
 static bool finish = false;
 static int connection_port = DEFAULT_PORT;
 static struct pollfd streams[2];
+static buffer_state buffer;
+
+static void reset_buffer() {
+    buffer.has_length = false;
+    buffer.data_read = 0;
+}
 
 static void create_socket() {
     sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -54,6 +60,7 @@ static void initialize_streams() {
         streams[i].events = POLLIN;
         streams[i].revents = 0;
     }
+    reset_buffer();
 }
 
 static void close_socket() {
@@ -65,45 +72,51 @@ static void close_socket() {
 //TODO: check error messages and communicates
 static void receive_message() {
     if (streams[1].revents & (POLLIN | POLLERR | POLLHUP)) {
-        message msg;
         size_t len;
-        int count;
-        ssize_t rval = read(sock, &(msg.len), sizeof(uint16_t));
-        if (rval == 0) {
-            fprintf(stderr, "Ending connection\n");
-            close_socket();
-            exit(EXIT_SUCCESS);
-        } else if (rval != sizeof(uint16_t)) {
-            perror("Reading stream message");
-            close_socket();
-            exit(EXIT_WRONG_MESSAGE);
+        ssize_t rval;
+        if (!buffer.has_length) {
+            rval = read(sock, &(buffer.msg.len), sizeof(uint16_t));
+            buffer.has_length = true;
+            if (rval == 0) {
+                fprintf(stderr, "Ending connection\n");
+                close_socket();
+                exit(EXIT_SUCCESS);
+            } else if (rval != sizeof(uint16_t)) {
+                perror("Reading stream message");
+                close_socket();
+                exit(EXIT_WRONG_MESSAGE);
+            }
         }
-        len = ntohs(msg.len);
-        ioctl(sock, FIONREAD, &count);
-        if (count < len) return; //wait for the rest of the message
-        rval = read(sock, &(msg.data), len);
+        len = ntohs(buffer.msg.len);
+        rval = read(sock,
+                    buffer.msg.data + buffer.data_read,
+                    len - buffer.data_read);
         if (rval < 0) {
             perror("Reading stream message");
             close_socket();
-        } else if (!is_message_valid(&msg, rval)) {
+            return;
+        }
+        buffer.data_read += rval;
+        if (buffer.data_read < len) {
+            return; // wait for the rest of the message
+        }
+        if (!is_message_valid(&(buffer.msg), len)) {
             perror("message from server invalid\n");
             close_socket();
             exit(EXIT_WRONG_MESSAGE);
         } else {
-//                printf("%*.*s\n", (int)len, (int)len, msg.data);
-            fwrite(msg.data, 1, len, stdout);
+//          printf("%*.*s\n", (int)len, (int)len, msg.data);
+            fwrite(buffer.msg.data, 1, len, stdout);
             fwrite("\n", 1, 1, stdout);
             fflush(stdout);
+            reset_buffer();
         }
     }
 }
 
 //TODO: delete commented out lines
 static void send_message() {
-    if (streams[0].revents & POLLHUP) {
-        exit(EXIT_SUCCESS);
-    }
-    if (streams[0].revents & POLLIN) {
+    if (streams[0].revents & (POLLIN | POLLHUP)) {
         char line[BUF_SIZE + 1];
         message msg;
         char* a = fgets(line, sizeof(line), stdin);
@@ -112,6 +125,9 @@ static void send_message() {
             return;
         }
         uint16_t line_len = strlen(line);
+        if (line_len == 1 && line[0] == '\n') {
+            return;
+        }
         if (line[line_len - 1] == '\n') {
             line_len -= 1;
         }

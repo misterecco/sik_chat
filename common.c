@@ -22,7 +22,7 @@ void validate_arguments_and_set_connection_port(
 }
 
 bool is_message_valid(message *msg, ssize_t len) {
-//    printf("read val: %ld, msg len: %d, str len: %d\n", len, ntohs(msg->len), (int)strnlen(msg->data, (size_t)len));
+//    fprintf(stderr, "read val: %ld, msg len: %d, str len: %d\n", len, ntohs(msg->len), (int)strnlen(msg->data, (size_t)len));
     if (ntohs(msg->len) <= BUF_SIZE
         && ntohs(msg->len) == len
         && len == strnlen(msg->data, (size_t)len)) {

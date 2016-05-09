@@ -17,6 +17,7 @@ static int active_clients = 0;
 static struct pollfd client[MAX_CLIENTS];
 static struct sockaddr_in server;
 static int msgsock;
+static struct buffer_state buffers[MAX_CLIENTS];
 
 #ifdef DEBUG
 static bool debug = true;
@@ -24,11 +25,17 @@ static bool debug = true;
 static bool debug = false;
 #endif
 
+static void reset_client_buffer(int client_number) {
+    buffers[client_number].data_read = 0;
+    buffers[client_number].has_length = false;
+}
+
 static void initialize_clients_array() {
     for (int i = 0; i < MAX_CLIENTS; ++i) {
         client[i].fd = -1;
         client[i].events = POLLIN;
         client[i].revents = 0;
+        reset_client_buffer(i);
     }
 }
 
@@ -112,6 +119,7 @@ static void close_client_socket(int client_number) {
         perror("close");
     client[client_number].fd = -1;
     active_clients -= 1;
+    reset_client_buffer(client_number);
 };
 
 static void broadcast_message(int client_number, ssize_t size, message *msg) {
@@ -126,38 +134,45 @@ static void broadcast_message(int client_number, ssize_t size, message *msg) {
 
 //TODO: rename this function
 static void read_and_broadcast_messages_and_close_connections() {
-    message msg;
     size_t len;
-    int count;
+    ssize_t rval;
     for (int i = 1; i < MAX_CLIENTS; ++i) {
         if (client[i].fd != -1 && (client[i].revents & (POLLIN | POLLERR))) {
-            ssize_t rval = read(client[i].fd, &(msg.len), sizeof(uint16_t));
-            if (rval == 0) {
-                if (debug) fprintf(stderr, "Ending connection\n");
-                close_client_socket(i);
+            if (!buffers[i].has_length) {
+                rval = read(client[i].fd, &(buffers[i].msg.len), sizeof(uint16_t));
+                buffers[i].has_length = true;
+                if (rval == 0) {
+                    if (debug) fprintf(stderr, "Ending connection\n");
+                    close_client_socket(i);
+                }
+                if (rval != sizeof(uint16_t)) {
+                    perror("Reading stream message");
+                    close_client_socket(i);
+                }
             }
-            if (rval != sizeof(uint16_t)) {
-                perror("Reading stream message");
-                close_client_socket(i);
-            }
-            len = ntohs(msg.len);
-            ioctl(client[i].fd, FIONREAD, &count);
-            if (count < len) return; //wait for the rest of the message
-            rval = read(client[i].fd, &(msg.data), len);
+            len = ntohs(buffers[i].msg.len);
+            rval = read(client[i].fd,
+                        buffers[i].msg.data + buffers[i].data_read,
+                        len - buffers[i].data_read);
             if (rval < 0) {
                 perror("Reading stream message");
                 close_client_socket(i);
-            } else { //TODO: reflow this part
-                if (!is_message_valid(&msg, rval)) {
-                    if (debug) perror("message invalid. closing connection\n");
-                    close_client_socket(i);
-                } else {
-                    if (debug) {
-                        fwrite(msg.data, 1, len, stderr);
-                        fwrite("\n", 1, 1, stderr);
-                    }
-                    broadcast_message(i, rval + sizeof(uint16_t), &msg);
+                return;
+            }
+            buffers[i].data_read += rval;
+            if (buffers[i].data_read < len) {
+                return; // wait for the rest of the message
+            }
+            if (!is_message_valid(&(buffers[i].msg), len)) {
+                if (debug) perror("message invalid. closing connection\n");
+                close_client_socket(i);
+            } else {
+                if (debug) {
+                    fwrite(buffers[i].msg.data, 1, len, stderr);
+                    fwrite("\n", 1, 1, stderr);
                 }
+                broadcast_message(i, len + sizeof(uint16_t), &(buffers[i].msg));
+                reset_client_buffer(i);
             }
         }
     }
