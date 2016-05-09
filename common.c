@@ -1,24 +1,10 @@
 #include <stdio.h>
 #include "common.h"
-#include "err.h"
 
 #include <stdlib.h>
-#include <signal.h>
 #include <limits.h>
 #include <netinet/in.h>
-
-void set_sigint_behaviour(void(*handler)(int)) {
-    struct sigaction setup_action;
-    sigset_t block_mask;
-    sigfillset(&block_mask);
-    sigdelset(&block_mask, SIGSTOP | SIGTERM | SIGQUIT);
-    setup_action.sa_handler = handler;
-    setup_action.sa_mask = block_mask;
-    setup_action.sa_flags = 0;
-    if (sigaction(SIGINT, &setup_action, 0) == -1) {
-        syserr("sigaction");
-    }
-}
+#include <string.h>
 
 void validate_arguments_and_set_connection_port(
         int argc, char **argv, int max_expected, int *port, char *param_info) {
@@ -36,5 +22,16 @@ void validate_arguments_and_set_connection_port(
 }
 
 bool is_message_valid(message *msg, ssize_t len) {
-    return sizeof(msg->len) + ntohs(msg->len) == len;
+//    printf("read val: %ld, msg len: %d, str len: %d\n", len, ntohs(msg->len), (int)strnlen(msg->data, (size_t)len));
+    if (ntohs(msg->len) <= BUF_SIZE
+        && ntohs(msg->len) == len
+        && len == strnlen(msg->data, (size_t)len)) {
+        for (int i = 0; i < len; i++) {
+            if (msg->data[i] == '\0' || msg->data[i] == '\n') {
+                return false;
+            }
+        }
+        return true;
+    };
+    return false;
 }

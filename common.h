@@ -14,7 +14,6 @@ typedef struct __attribute__((__packed__)) message {
     char data[BUF_SIZE];
 } message;
 
-void set_sigint_behaviour(void(*handler)(int));
 void validate_arguments_and_set_connection_port(
         int argc, char **argv, int max_expected, int *port, char *param_info);
 bool is_message_valid(message *msg, ssize_t len);

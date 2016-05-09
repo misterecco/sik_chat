@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/ioctl.h>
 #include "common.h"
 
 #define MAX_CLIENTS 21
@@ -22,11 +23,6 @@ static bool debug = true;
 #else
 static bool debug = false;
 #endif
-
-static void catch_int (int sig) {
-    finish = true;
-    fprintf(stderr, "Signal %d caught. No new connections will be accepted.\n", sig);
-}
 
 static void initialize_clients_array() {
     for (int i = 0; i < MAX_CLIENTS; ++i) {
@@ -128,21 +124,30 @@ static void broadcast_message(int client_number, ssize_t size, message *msg) {
     }
 }
 
+//TODO: rename this function
 static void read_and_broadcast_messages_and_close_connections() {
     message msg;
+    size_t len;
+    int count;
     for (int i = 1; i < MAX_CLIENTS; ++i) {
         if (client[i].fd != -1 && (client[i].revents & (POLLIN | POLLERR))) {
-            ssize_t rval = read(client[i].fd, &msg, sizeof(message));
-            if (rval < 0) {
-                perror("Reading stream message");
-                close_client_socket(i);
-            }
-            else if (rval == 0) {
+            ssize_t rval = read(client[i].fd, &(msg.len), sizeof(uint16_t));
+            if (rval == 0) {
                 if (debug) fprintf(stderr, "Ending connection\n");
                 close_client_socket(i);
             }
-            else {
-                size_t len = ntohs(msg.len);
+            if (rval != sizeof(uint16_t)) {
+                perror("Reading stream message");
+                close_client_socket(i);
+            }
+            len = ntohs(msg.len);
+            ioctl(client[i].fd, FIONREAD, &count);
+            if (count < len) return; //wait for the rest of the message
+            rval = read(client[i].fd, &(msg.data), len);
+            if (rval < 0) {
+                perror("Reading stream message");
+                close_client_socket(i);
+            } else { //TODO: reflow this part
                 if (!is_message_valid(&msg, rval)) {
                     if (debug) perror("message invalid. closing connection\n");
                     close_client_socket(i);
@@ -151,7 +156,7 @@ static void read_and_broadcast_messages_and_close_connections() {
                         fwrite(msg.data, 1, len, stderr);
                         fwrite("\n", 1, 1, stderr);
                     }
-                    broadcast_message(i, rval, &msg);
+                    broadcast_message(i, rval + sizeof(uint16_t), &msg);
                 }
             }
         }
@@ -173,7 +178,6 @@ int main (int argc, char** argv) {
 
     validate_arguments_and_set_connection_port(argc, argv, 2,
                                                &connection_port, "[port]");
-    set_sigint_behaviour(catch_int);
     initialize_clients_array();
     create_central_socket();
     bind_port_to_socket();
@@ -181,7 +185,7 @@ int main (int argc, char** argv) {
     listen_on_central_socket();
 
     do {
-//        reset_revents();
+        reset_revents();
         close_central_socket_if_necessary();
         do_poll();
     } while (finish == false || active_clients > 0);
