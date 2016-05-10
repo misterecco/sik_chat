@@ -75,11 +75,11 @@ static void receive_message() {
         ssize_t rval;
         if (buffer.length_read < 2) {
             rval = read(sock,
-                        &(buffer.msg.len) + buffer.length_read,
+                        (char *)&(buffer.msg.len) + buffer.length_read,
                         2 - buffer.length_read);
             if (rval == 0) {
                 close_socket();
-                exit(EXIT_SUCCESS);
+                exit(EXIT_WRONG_MESSAGE);
             } else if (rval > 0) {
                 buffer.length_read += rval;
             } else {
@@ -87,6 +87,9 @@ static void receive_message() {
                 close_socket();
                 exit(EXIT_FAILURE);
             }
+        }
+        if (buffer.length_read < 2) {
+            return;
         }
         len = ntohs(buffer.msg.len);
         if (len > BUF_SIZE) {

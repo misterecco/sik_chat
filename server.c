@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <sys/ioctl.h>
 #include "common.h"
 
 #define MAX_CLIENTS 21
@@ -120,22 +119,24 @@ static void handle_client_messages() {
     size_t len;
     ssize_t rval;
     for (int i = 1; i < MAX_CLIENTS; ++i) {
-        if (client[i].fd != -1 && (client[i].revents & (POLLIN | POLLERR))) {
+        if (client[i].fd != -1 && (client[i].revents & (POLLIN | POLLERR | POLLHUP))) {
             if (buffers[i].length_read < 2) {
                 rval = read(client[i].fd,
-                            &(buffers[i].msg.len) + buffers[i].length_read,
+                            (char *)&(buffers[i].msg.len) + buffers[i].length_read,
                             2 - buffers[i].length_read);
                 if (rval == 0) {
                     close_client_socket(i);
                     continue;
                 } else if (rval > 0) {
                     buffers[i].length_read += rval;
-                }
-                if (rval < 0) {
+                } else {
                     perror("Reading stream message");
                     close_client_socket(i);
                     continue;
                 }
+            }
+            if (buffers[i].length_read < 2) {
+                continue;
             }
             len = ntohs(buffers[i].msg.len);
             if (len > BUF_SIZE) {
